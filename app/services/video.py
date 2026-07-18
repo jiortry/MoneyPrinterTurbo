@@ -14,7 +14,6 @@ from loguru import logger
 import numpy as np
 from moviepy import (
     AudioFileClip,
-    ColorClip,
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
@@ -641,28 +640,34 @@ def combine_videos(
             if normalized_clip_speed != 1.0:
                 clip = clip.with_speed_scaled(normalized_clip_speed)
             clip_duration = clip.duration
-            # Not all videos are same size, so we need to resize them
+            # Not all videos are same size: cover-crop to target aspect (TikTok
+            # 9:16) so the frame is always filled. Extra zoom avoids letterbox
+            # bars and tight framing on landscape stock clips.
             clip_w, clip_h = clip.size
             if clip_w != video_width or clip_h != video_height:
                 clip_ratio = clip.w / clip.h
                 video_ratio = video_width / video_height
-                logger.debug(f"resizing clip, source: {clip_w}x{clip_h}, ratio: {clip_ratio:.2f}, target: {video_width}x{video_height}, ratio: {video_ratio:.2f}")
+                # Scale up enough to cover the canvas, then zoom further (~25%).
+                cover_zoom = 1.25
+                scale_factor = (
+                    max(video_width / clip_w, video_height / clip_h) * cover_zoom
+                )
+                new_width = max(video_width, int(round(clip_w * scale_factor)))
+                new_height = max(video_height, int(round(clip_h * scale_factor)))
+                logger.debug(
+                    f"cover-cropping clip, source: {clip_w}x{clip_h}, "
+                    f"ratio: {clip_ratio:.2f}, target: {video_width}x{video_height}, "
+                    f"ratio: {video_ratio:.2f}, scaled: {new_width}x{new_height}, "
+                    f"zoom: {cover_zoom:.2f}"
+                )
+                clip = clip.resized(new_size=(new_width, new_height)).cropped(
+                    x_center=new_width / 2,
+                    y_center=new_height / 2,
+                    width=video_width,
+                    height=video_height,
+                )
                 
-                if clip_ratio == video_ratio:
-                    clip = clip.resized(new_size=(video_width, video_height))
-                else:
-                    if clip_ratio > video_ratio:
-                        scale_factor = video_width / clip_w
-                    else:
-                        scale_factor = video_height / clip_h
 
-                    new_width = int(clip_w * scale_factor)
-                    new_height = int(clip_h * scale_factor)
-
-                    background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip_duration)
-                    clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
-                    clip = CompositeVideoClip([background, clip_resized])
-                    
             shuffle_side = random.choice(["left", "right", "top", "bottom"])
             if transition_value in (None, VideoTransitionMode.none.value):
                 clip = clip
@@ -1148,7 +1153,8 @@ def generate_video(
         _clip = _clip.with_end(subtitle_item[0][1])
         _clip = _clip.with_duration(duration)
         if params.subtitle_position == "bottom":
-            _clip = _clip.with_position(("center", video_height * 0.95 - _clip.h))
+            # Raised from near-edge (0.95) so TikTok captions sit above UI chrome.
+            _clip = _clip.with_position(("center", video_height * 0.72 - _clip.h / 2))
         elif params.subtitle_position == "top":
             _clip = _clip.with_position(("center", video_height * 0.05))
         elif params.subtitle_position == "custom":

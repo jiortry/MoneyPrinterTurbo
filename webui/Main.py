@@ -92,9 +92,10 @@ VOICE_MODE_NONE = "none"
 DEFAULT_VIDEO_CODEC_OPTION = "__default__"
 DEFAULT_SUBTITLE_SETTINGS = {
     "subtitle_enabled": True,
-    "font_name": "MicrosoftYaHeiBold.ttc",
-    "subtitle_position": "bottom",
-    "custom_position": 70.0,
+    "font_name": "UTM Kabel KT.ttf",
+    "subtitle_position": "custom",
+    # % from top: lower than before (~70–95) so captions sit mid-lower like TikTok.
+    "custom_position": 58.0,
     "text_fore_color": "#FFFFFF",
     "font_size": 60,
     "stroke_color": "#000000",

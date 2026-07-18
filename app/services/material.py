@@ -139,26 +139,37 @@ def search_videos_pixabay(
             logger.error(f"search videos failed: {response}")
             return video_items
         videos = response["hits"]
-        # loop through each video in the result
+        target_ratio = video_width / video_height
+        scored_items = []
+        # Prefer near-9:16 / portrait clips; landscape still fills via cover-crop.
         for v in videos:
             duration = v["duration"]
-            # check if video has desired minimum duration
             if duration < minimum_duration:
                 continue
             video_files = v["videos"]
-            # loop through each url to determine the best quality
+            best_for_hit = None
+            best_score = float("inf")
             for video_type in video_files:
                 video = video_files[video_type]
                 w = int(video["width"])
-                # h = int(video["height"])
-                if w >= video_width:
+                h = int(video.get("height") or 0)
+                if w < video_width or h <= 0:
+                    continue
+                ratio = w / h
+                aspect_distance = abs(ratio - target_ratio)
+                portrait_bonus = 0.0 if h >= w else 0.35
+                score = aspect_distance + portrait_bonus - min(w, 3840) / 100000.0
+                if score < best_score:
+                    best_score = score
                     item = MaterialInfo()
                     item.provider = "pixabay"
                     item.url = video["url"]
                     item.duration = duration
-                    video_items.append(item)
-                    break
-        return video_items
+                    best_for_hit = item
+            if best_for_hit is not None:
+                scored_items.append((best_score, best_for_hit))
+        scored_items.sort(key=lambda pair: pair[0])
+        return [item for _, item in scored_items]
     except Exception as e:
         logger.error(f"search videos failed: {str(e)}")
 
@@ -181,7 +192,7 @@ def search_videos_coverr(
       - URL 是 signed JWT(绑定 API key,无过期时间)
       - Coverr 库以 16:9 横屏为主,9:16 portrait 占比极低(约 1%)
         因此本函数不做 aspect_ratio 过滤,由下游 video.py 的
-        resize + letterbox 逻辑统一处理
+        cover-crop + zoom 逻辑统一处理为竖屏 9:16
       - duration 字段同时存在 number 和 string 两种形态,本函数都接受
 
     本函数使用 urls.mp4_download 字段作为下载地址 —— 按 Coverr 官方文档
