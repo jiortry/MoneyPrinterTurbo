@@ -562,6 +562,15 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
         logger.warning(f"subtitle file is invalid: {subtitle_path}")
         return ""
 
+    # TikTok-style captions: flash 1-2 words at a time (never more than 3).
+    subtitle.chunk_subtitles_by_words(
+        subtitle_path, preferred_words=2, max_words=3
+    )
+    subtitle_lines = subtitle.file_to_subtitles(subtitle_path)
+    if not subtitle_lines:
+        logger.warning(f"subtitle file is invalid after word chunking: {subtitle_path}")
+        return ""
+
     return subtitle_path
 
 

@@ -171,6 +171,122 @@ def file_to_subtitles(filename):
     return times_texts
 
 
+def _srt_timestamp_to_seconds(value: str) -> float:
+    hours, minutes, rest = value.split(":")
+    seconds, millis = rest.split(",")
+    return (
+        int(hours) * 3600
+        + int(minutes) * 60
+        + int(seconds)
+        + int(millis) / 1000.0
+    )
+
+
+def _split_subtitle_words(text: str) -> list[str]:
+    return [part for part in re.split(r"\s+", text.strip()) if part]
+
+
+def _group_words_for_viral_captions(
+    words: list[str], preferred_words: int = 2, max_words: int = 3
+) -> list[list[str]]:
+    """Chunk words into short TikTok-style captions (prefer 1-2, never more than max)."""
+    if preferred_words < 1:
+        preferred_words = 1
+    if max_words < preferred_words:
+        max_words = preferred_words
+
+    chunks: list[list[str]] = []
+    index = 0
+    total = len(words)
+    while index < total:
+        remaining = total - index
+        if remaining <= preferred_words:
+            size = remaining
+        elif remaining == preferred_words + 1 and preferred_words + 1 <= max_words:
+            # Prefer 2+1 over a lonely 1 after a pair when max allows 3.
+            size = preferred_words
+        else:
+            size = preferred_words
+        size = min(size, max_words, remaining)
+        chunks.append(words[index : index + size])
+        index += size
+    return chunks
+
+
+def chunk_subtitles_by_words(
+    subtitle_file: str,
+    preferred_words: int = 2,
+    max_words: int = 3,
+) -> bool:
+    """
+    Rewrite an SRT so each cue shows at most ``max_words`` words (default prefer 2).
+
+    Timing is split proportionally across the original cue window so captions
+    stay roughly synced with the voiceover while flashing quickly for attention.
+    """
+    if not subtitle_file or not os.path.isfile(subtitle_file):
+        return False
+
+    items = file_to_subtitles(subtitle_file)
+    if not items:
+        return False
+
+    rewritten = []
+    cue_index = 1
+    for _, times_line, text in items:
+        words = _split_subtitle_words(text)
+        if not words:
+            continue
+
+        match = re.match(
+            r"([0-9]+:[0-9]+:[0-9]+,[0-9]+)\s*-->\s*([0-9]+:[0-9]+:[0-9]+,[0-9]+)",
+            times_line,
+        )
+        if not match:
+            rewritten.append(utils.text_to_srt(cue_index, text, 0, 0.5))
+            cue_index += 1
+            continue
+
+        start = _srt_timestamp_to_seconds(match.group(1))
+        end = _srt_timestamp_to_seconds(match.group(2))
+        if end <= start:
+            end = start + max(0.2, 0.15 * len(words))
+
+        chunks = _group_words_for_viral_captions(
+            words, preferred_words=preferred_words, max_words=max_words
+        )
+        if len(chunks) == 1:
+            rewritten.append(utils.text_to_srt(cue_index, " ".join(chunks[0]), start, end))
+            cue_index += 1
+            continue
+
+        total_words = sum(len(chunk) for chunk in chunks) or 1
+        cursor = start
+        duration = end - start
+        for chunk_i, chunk in enumerate(chunks):
+            chunk_share = len(chunk) / total_words
+            chunk_end = end if chunk_i == len(chunks) - 1 else cursor + duration * chunk_share
+            # Keep a tiny visible window even on very short source cues.
+            if chunk_end - cursor < 0.08:
+                chunk_end = min(end, cursor + 0.08)
+            rewritten.append(
+                utils.text_to_srt(cue_index, " ".join(chunk), cursor, chunk_end)
+            )
+            cue_index += 1
+            cursor = chunk_end
+
+    if not rewritten:
+        return False
+
+    with open(subtitle_file, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(line.rstrip() for line in rewritten) + "\n")
+    logger.info(
+        f"subtitle chunked to max {max_words} words/cue "
+        f"(preferred {preferred_words}): {subtitle_file}"
+    )
+    return True
+
+
 def levenshtein_distance(s1, s2):
     if len(s1) < len(s2):
         return levenshtein_distance(s2, s1)
