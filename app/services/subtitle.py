@@ -278,8 +278,9 @@ def chunk_subtitles_by_words(
     if not rewritten:
         return False
 
+    # Keep a blank line between cues so file_to_subtitles() can split blocks.
     with open(subtitle_file, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(line.rstrip() for line in rewritten) + "\n")
+        handle.write("\n\n".join(block.strip() for block in rewritten) + "\n")
     logger.info(
         f"subtitle chunked to max {max_words} words/cue "
         f"(preferred {preferred_words}): {subtitle_file}"
