@@ -934,7 +934,7 @@ def _apply_pending_task_restore():
         # slider 注入越界值、NaN 或无穷值导致控件状态异常。
         utils.normalize_clip_speed(params.get("video_clip_speed", 1.0)),
     )
-    _set_stable_widget_value("video_count_select", params.get("video_count", 1))
+    _set_stable_widget_value("video_count_select", params.get("video_count", 2))
     st.session_state["match_materials_to_script"] = bool(
         params.get("match_materials_to_script", False)
     )
