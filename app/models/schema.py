@@ -81,7 +81,7 @@ class VideoParams(BaseModel):
     video_clip_duration: Optional[int] = 2
     video_clip_speed: Optional[float] = 1.0
     match_materials_to_script: bool = False
-    video_count: Optional[int] = 1
+    video_count: Optional[int] = 2
 
     video_source: Optional[str] = "pexels"
     video_materials: Optional[List[MaterialInfo]] = (

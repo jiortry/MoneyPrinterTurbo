@@ -2363,7 +2363,7 @@ def _render_video_settings(panel, params):
             params.video_count = stable_selectbox(
                 tr("Number of Videos Generated Simultaneously"),
                 options=[1, 2, 3, 4, 5],
-                default_value=1,
+                default_value=2,
                 key="video_count_select",
             )
 
