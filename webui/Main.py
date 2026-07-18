@@ -231,20 +231,22 @@ def _initialize_session_state():
 
     defaults = {
         "video_subject": (
-            "App outfit AI: inserisci i tuoi capi nell'armadio digitale "
-            "e genera outfit completi in pochi secondi"
+            "Glow-up outfit virale: da 'non so cosa mettermi' a look "
+            "da passerella in 3 secondi con AI che crea outfit dai tuoi capi"
         ),
         "video_script": "",
         "video_terms": (
-            "fashion outfit, wardrobe styling,clothing try on,"
-            "style app,street fashion,clothes hanging"
+            "fashion model walking,outfit transformation,street style,"
+            "clothing haul,mirror selfie fashion,runway look,"
+            "stylish woman spinning,wardrobe reveal,tiktok fashion"
         ),
         "video_script_prompt": (
-            "Scrivi uno spot TikTok/Reels di 15-25 secondi. "
-            "Hook sul problema 'non so cosa mettermi', mostra inserimento "
-            "dei capi nell'app, poi outfit generati automaticamente, "
-            "chiudi con CTA per scaricare l'app. Tono Gen-Z, energico, "
-            "senza markdown né elenchi puntati."
+            "Scrivi uno spot TikTok/Reels ULTRA VIRALE di 12-20 secondi. "
+            "Prima riga = hook forte nei primi 1-2 secondi (pattern interrupt, "
+            "curiosita, FOMO). Ritmato, frasi corte, zero spiegazioni tecniche. "
+            "Tema: outfit AI che parte dai tuoi capi e genera look incredibili. "
+            "Chiudi con CTA aggressiva tipo 'scaricala ora'. "
+            "Tono Gen-Z, meme-ready, senza markdown ne elenchi."
         ),
         "custom_system_prompt": llm.DEFAULT_SCRIPT_SYSTEM_PROMPT,
         "match_materials_to_script": bool(
