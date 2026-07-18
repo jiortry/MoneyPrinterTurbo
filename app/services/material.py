@@ -1,7 +1,7 @@
 import os
 import random
 import threading
-from typing import List
+from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -321,6 +321,7 @@ def download_videos(
     audio_duration: float = 0.0,
     max_clip_duration: int = 5,
     match_script_order: bool = False,
+    material_directory_override: Optional[str] = None,
 ) -> List[str]:
     search_videos = search_videos_pexels
     if source == "pixabay":
@@ -328,11 +329,14 @@ def download_videos(
     elif source == "coverr":
         search_videos = search_videos_coverr
 
-    material_directory = config.app.get("material_directory", "").strip()
-    if material_directory == "task":
-        material_directory = utils.task_dir(task_id)
-    elif material_directory and not os.path.isdir(material_directory):
-        material_directory = ""
+    if material_directory_override:
+        material_directory = material_directory_override
+    else:
+        material_directory = config.app.get("material_directory", "").strip()
+        if material_directory == "task":
+            material_directory = utils.task_dir(task_id)
+        elif material_directory and not os.path.isdir(material_directory):
+            material_directory = ""
 
     if match_script_order:
         return _download_videos_by_script_order(

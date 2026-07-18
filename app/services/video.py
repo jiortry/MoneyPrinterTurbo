@@ -1152,21 +1152,20 @@ def generate_video(
         _clip = _clip.with_start(subtitle_item[0][0])
         _clip = _clip.with_end(subtitle_item[0][1])
         _clip = _clip.with_duration(duration)
+        # Anchor every caption to the same Y (center of the text line), so
+        # 1-3 word flashes do not jump when glyph height changes.
         if params.subtitle_position == "bottom":
-            # Raised from near-edge (0.95) so TikTok captions sit above UI chrome.
-            _clip = _clip.with_position(("center", video_height * 0.72 - _clip.h / 2))
+            fixed_center_y = video_height * 0.72
+            _clip = _clip.with_position(("center", fixed_center_y - _clip.h / 2))
         elif params.subtitle_position == "top":
-            _clip = _clip.with_position(("center", video_height * 0.05))
+            fixed_center_y = video_height * 0.12
+            _clip = _clip.with_position(("center", fixed_center_y - _clip.h / 2))
         elif params.subtitle_position == "custom":
-            # Ensure the subtitle is fully within the screen bounds
-            margin = 10  # Additional margin, in pixels
-            max_y = video_height - _clip.h - margin
-            min_y = margin
-            custom_y = (video_height - _clip.h) * (params.custom_position / 100)
-            custom_y = max(
-                min_y, min(custom_y, max_y)
-            )  # Constrain the y value within the valid range
-            _clip = _clip.with_position(("center", custom_y))
+            margin = 10
+            fixed_center_y = video_height * (params.custom_position / 100.0)
+            top_y = fixed_center_y - _clip.h / 2
+            top_y = max(margin, min(top_y, video_height - _clip.h - margin))
+            _clip = _clip.with_position(("center", top_y))
         else:  # center
             _clip = _clip.with_position(("center", "center"))
         return _clip

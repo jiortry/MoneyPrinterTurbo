@@ -236,11 +236,7 @@ def _initialize_session_state():
             "l'AI che crea outfit dai suoi capi in 3 secondi"
         ),
         "video_script": "",
-        "video_terms": (
-            "fashion model walking,outfit transformation,street style,"
-            "clothing haul,mirror selfie fashion,runway look,"
-            "stylish woman spinning,wardrobe reveal,tiktok fashion"
-        ),
+        "video_terms": "",
         "video_script_prompt": (
             "Spot TikTok 12-20s ULTRA VOLGARE al massimo. Hook che "
             "spara insulti osceni allo spettatore. ALMENO 6 termini "

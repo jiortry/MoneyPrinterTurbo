@@ -285,17 +285,16 @@ def generate_script(task_id, params):
     return video_script
 
 
-def generate_terms(task_id, params, video_script):
+def generate_terms(task_id, params, video_script, force_llm: bool = False):
     logger.info("\n\n## generating video terms")
     video_terms = params.video_terms
-    if not video_terms:
-        # 开启素材按文案顺序匹配后，关键词本身也必须按脚本叙事顺序生成；
-        # 否则后续即使顺序下载和顺序拼接，也只能复用一组全局主题词，
-        # 无法改善“后面内容的画面提前出现”的问题。
+    # When matching B-roll to narration, always derive terms from THIS script so
+    # preset UI keywords cannot override visual relevance.
+    if force_llm or params.match_materials_to_script or not video_terms:
         video_terms = llm.generate_terms(
             video_subject=params.video_subject,
             video_script=video_script,
-            amount=8 if params.match_materials_to_script else 5,
+            amount=12 if params.match_materials_to_script else 8,
             match_script_order=params.match_materials_to_script,
         )
     else:
@@ -438,7 +437,9 @@ def _resolve_reusable_voice_preview(
     return preview_file, math.ceil(duration), sub_maker
 
 
-def generate_audio(task_id, params, video_script, voice_preview=None):
+def generate_audio(
+    task_id, params, video_script, voice_preview=None, audio_basename: str = "audio.mp3"
+):
     """
     Generate audio for the video script.
     If a custom audio file is provided, it will be used directly.
@@ -476,7 +477,7 @@ def generate_audio(task_id, params, video_script, voice_preview=None):
             return reusable_preview
 
         logger.info("no custom audio file provided, using TTS to generate audio.")
-        audio_file = path.join(utils.task_dir(task_id), "audio.mp3")
+        audio_file = path.join(utils.task_dir(task_id), audio_basename)
         sub_maker = voice.tts(
             text=video_script,
             voice_name=voice.parse_voice_name(params.voice_name),
@@ -507,7 +508,14 @@ def generate_audio(task_id, params, video_script, voice_preview=None):
             return None, None, None
         return custom_audio_file, audio_duration, None
 
-def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
+def generate_subtitle(
+    task_id,
+    params,
+    video_script,
+    sub_maker,
+    audio_file,
+    subtitle_basename: str = "subtitle.srt",
+):
     '''
     Generate subtitle for the video script.
     If subtitle generation is disabled or no subtitle maker is provided, it will return an empty string.
@@ -519,7 +527,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     if not params.subtitle_enabled:
         return ""
 
-    subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
+    subtitle_path = path.join(utils.task_dir(task_id), subtitle_basename)
     subtitle_provider = config.app.get("subtitle_provider", "edge").strip().lower()
     logger.info(f"\n\n## generating subtitle, provider: {subtitle_provider}")
 
@@ -574,7 +582,9 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     return subtitle_path
 
 
-def get_video_materials(task_id, params, video_terms, audio_duration):
+def get_video_materials(
+    task_id, params, video_terms, audio_duration, materials_subdir: str = ""
+):
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -592,6 +602,12 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
         logger.info(f"\n\n## downloading videos from {params.video_source}")
         # 顺序匹配模式只在用户显式开启时生效。这里强制素材下载按关键词顺序
         # 轮询，避免某个早期关键词下载太多素材，把后续脚本主题挤出最终时间线。
+        material_directory_override = None
+        if materials_subdir:
+            material_directory_override = path.join(
+                utils.task_dir(task_id), materials_subdir
+            )
+            os.makedirs(material_directory_override, exist_ok=True)
         downloaded_videos = material.download_videos(
             task_id=task_id,
             search_terms=video_terms,
@@ -602,9 +618,10 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
                 if params.match_materials_to_script
                 else params.video_concat_mode
             ),
-            audio_duration=audio_duration * params.video_count,
+            audio_duration=audio_duration,
             max_clip_duration=params.video_clip_duration,
             match_script_order=params.match_materials_to_script,
+            material_directory_override=material_directory_override,
         )
         if not downloaded_videos:
             _mark_task_failed(
@@ -617,8 +634,21 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
 
 
 def generate_final_videos(
-    task_id, params, downloaded_videos, audio_file, subtitle_path, audio_duration
+    task_id,
+    params,
+    downloaded_videos,
+    audio_file,
+    subtitle_path,
+    audio_duration,
+    video_index: int | None = None,
 ):
+    """
+    Compose final MP4 outputs.
+
+    When ``video_index`` is set, only that 1-based variant is rendered (used when
+    each run already has its own TTS + materials). Otherwise renders
+    ``params.video_count`` videos from the shared audio/materials pack.
+    """
     final_video_paths = []
     combined_video_paths = []
     warnings = []
@@ -631,15 +661,21 @@ def generate_final_videos(
     # 时间线稳定性和可解释性，所以开启后所有输出都使用顺序拼接。
     if params.match_materials_to_script:
         video_concat_mode = VideoConcatMode.sequential
-    elif params.video_count == 1:
+    elif params.video_count == 1 or video_index is not None:
         video_concat_mode = params.video_concat_mode
     else:
         video_concat_mode = VideoConcatMode.random
     video_transition_mode = params.video_transition_mode
 
+    if video_index is not None:
+        indices = [video_index]
+        progress_divisor = max(1, int(params.video_count or 1))
+    else:
+        indices = list(range(1, max(1, int(params.video_count or 1)) + 1))
+        progress_divisor = len(indices)
+
     _progress = 50
-    for i in range(params.video_count):
-        index = i + 1
+    for index in indices:
         combined_video_path = path.join(
             utils.task_dir(task_id), f"combined-{index}.mp4"
         )
@@ -656,7 +692,7 @@ def generate_final_videos(
             clip_speed=params.video_clip_speed,
         )
 
-        _progress += 50 / params.video_count / 2
+        _progress += 50 / progress_divisor / 2
         sm.state.update_task(task_id, progress=_progress)
 
         final_video_path = path.join(utils.task_dir(task_id), f"final-{index}.mp4")
@@ -714,7 +750,7 @@ def generate_final_videos(
                 }
             )
 
-        _progress += 50 / params.video_count / 2
+        _progress += 50 / progress_divisor / 2
         sm.state.update_task(task_id, progress=_progress)
 
         final_video_paths.append(final_video_path)
@@ -1117,10 +1153,11 @@ def _run_pipeline(
         )
         return {"script": video_script}
 
-    # 2. Generate terms
+    # 2. Generate terms (first/primary script). Full multi-video runs regenerate
+    # terms per variant below so each TTS gets its own visually matched B-roll.
     video_terms = ""
     if params.video_source != "local":
-        video_terms = generate_terms(task_id, params, video_script)
+        video_terms = generate_terms(task_id, params, video_script, force_llm=True)
         if not video_terms:
             return _mark_task_failed(
                 task_id,
@@ -1138,59 +1175,57 @@ def _run_pipeline(
 
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=20)
 
-    # 3. Generate audio
-    audio_file, audio_duration, sub_maker = generate_audio(
-        task_id,
-        params,
-        video_script,
-        voice_preview=voice_preview,
-    )
-    if not audio_file:
-        return _mark_task_failed(
+    # Early-stop API paths still produce a single audio/subtitle/materials pack.
+    if stop_at in ("audio", "subtitle", "materials"):
+        audio_file, audio_duration, sub_maker = generate_audio(
             task_id,
-            "audio",
-            "failed to prepare narration audio",
+            params,
+            video_script,
+            voice_preview=voice_preview,
+        )
+        if not audio_file:
+            return _mark_task_failed(
+                task_id,
+                "audio",
+                "failed to prepare narration audio",
+            )
+
+        sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=30)
+
+        if stop_at == "audio":
+            sm.state.update_task(
+                task_id,
+                state=const.TASK_STATE_COMPLETE,
+                progress=100,
+                audio_file=audio_file,
+            )
+            return {"audio_file": audio_file, "audio_duration": audio_duration}
+
+        subtitle_path = generate_subtitle(
+            task_id, params, video_script, sub_maker, audio_file
         )
 
-    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=30)
+        if stop_at == "subtitle":
+            sm.state.update_task(
+                task_id,
+                state=const.TASK_STATE_COMPLETE,
+                progress=100,
+                subtitle_path=subtitle_path,
+            )
+            return {"subtitle_path": subtitle_path}
 
-    if stop_at == "audio":
-        sm.state.update_task(
-            task_id,
-            state=const.TASK_STATE_COMPLETE,
-            progress=100,
-            audio_file=audio_file,
+        sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
+
+        downloaded_videos = get_video_materials(
+            task_id, params, video_terms, audio_duration
         )
-        return {"audio_file": audio_file, "audio_duration": audio_duration}
+        if not downloaded_videos:
+            return _mark_task_failed(
+                task_id,
+                "materials",
+                "failed to prepare video materials",
+            )
 
-    # 4. Generate subtitle
-    subtitle_path = generate_subtitle(
-        task_id, params, video_script, sub_maker, audio_file
-    )
-
-    if stop_at == "subtitle":
-        sm.state.update_task(
-            task_id,
-            state=const.TASK_STATE_COMPLETE,
-            progress=100,
-            subtitle_path=subtitle_path,
-        )
-        return {"subtitle_path": subtitle_path}
-
-    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
-
-    # 5. Get video materials
-    downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration
-    )
-    if not downloaded_videos:
-        return _mark_task_failed(
-            task_id,
-            "materials",
-            "failed to prepare video materials",
-        )
-
-    if stop_at == "materials":
         sm.state.update_task(
             task_id,
             state=const.TASK_STATE_COMPLETE,
@@ -1199,21 +1234,147 @@ def _run_pipeline(
         )
         return {"materials": downloaded_videos}
 
-    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=50)
-
-    # 仅完整视频生成流程才需要处理视频拼接模式；
-    # 这样可以避免 /subtitle 和 /audio 这类请求访问不存在的字段。
+    # 3-6. Full generation: each Videos-per-Run item gets its own script
+    # variation (when count>1), TTS, subtitles, and stock materials.
     if type(params.video_concat_mode) is str:
         params.video_concat_mode = VideoConcatMode(params.video_concat_mode)
 
-    # 6. Generate final videos
-    final_video_paths, combined_video_paths, generation_warnings = generate_final_videos(
+    video_count = max(1, int(params.video_count or 1))
+    final_video_paths = []
+    combined_video_paths = []
+    generation_warnings = []
+    variant_scripts = []
+    variant_terms = []
+    last_audio_file = ""
+    last_audio_duration = 0
+    last_subtitle_path = ""
+    last_materials = []
+    base_script = video_script
+
+    for i in range(video_count):
+        index = i + 1
+        logger.info(f"\n\n## generating variant {index}/{video_count}")
+
+        if i == 0:
+            script_i = base_script
+        else:
+            variation_prompt = (
+                f"{params.video_script_prompt}\n\n"
+                f"IMPORTANT: Write variation #{index}. Use different insults and "
+                f"wording than this previous script (do not copy it):\n"
+                f"{base_script[:800]}"
+            ).strip()
+            script_i = llm.generate_script(
+                video_subject=params.video_subject,
+                language=params.video_language,
+                paragraph_number=params.paragraph_number,
+                video_script_prompt=variation_prompt,
+                custom_system_prompt=params.custom_system_prompt,
+            )
+            if not script_i or "Error: " in str(script_i):
+                logger.warning(
+                    f"variant {index} script failed, reusing base script"
+                )
+                script_i = base_script
+        variant_scripts.append(script_i)
+
+        if params.video_source != "local":
+            terms_i = generate_terms(
+                task_id, params, script_i, force_llm=True
+            )
+            if not terms_i:
+                return _mark_task_failed(
+                    task_id,
+                    "terms",
+                    f"failed to generate video search terms for variant {index}",
+                )
+        else:
+            terms_i = video_terms
+        variant_terms.append(terms_i)
+
+        audio_file, audio_duration, sub_maker = generate_audio(
+            task_id,
+            params,
+            script_i,
+            voice_preview=voice_preview if i == 0 else None,
+            audio_basename=f"audio-{index}.mp3",
+        )
+        if not audio_file:
+            return _mark_task_failed(
+                task_id,
+                "audio",
+                f"failed to prepare narration audio for variant {index}",
+            )
+        last_audio_file = audio_file
+        last_audio_duration = audio_duration
+
+        subtitle_path = generate_subtitle(
+            task_id,
+            params,
+            script_i,
+            sub_maker,
+            audio_file,
+            subtitle_basename=f"subtitle-{index}.srt",
+        )
+        last_subtitle_path = subtitle_path
+
+        downloaded_videos = get_video_materials(
+            task_id,
+            params,
+            terms_i,
+            audio_duration,
+            materials_subdir=f"materials-{index}",
+        )
+        if not downloaded_videos:
+            return _mark_task_failed(
+                task_id,
+                "materials",
+                f"failed to prepare video materials for variant {index}",
+            )
+        last_materials = downloaded_videos
+
+        sm.state.update_task(
+            task_id,
+            state=const.TASK_STATE_PROCESSING,
+            progress=20 + int(30 * index / video_count),
+        )
+
+        paths, combined, warnings = generate_final_videos(
+            task_id,
+            params,
+            downloaded_videos,
+            audio_file,
+            subtitle_path,
+            audio_duration,
+            video_index=index,
+        )
+        if not paths:
+            return _mark_task_failed(
+                task_id,
+                "video",
+                f"failed to generate final video for variant {index}",
+            )
+        final_video_paths.extend(paths)
+        combined_video_paths.extend(combined)
+        generation_warnings.extend(warnings or [])
+
+    video_script = variant_scripts[0] if variant_scripts else video_script
+    video_terms = variant_terms[0] if variant_terms else video_terms
+    audio_file = last_audio_file
+    audio_duration = last_audio_duration
+    subtitle_path = last_subtitle_path
+    downloaded_videos = last_materials
+    save_script_data(
         task_id,
+        video_script,
+        {
+            "primary": video_terms,
+            "variants": variant_terms,
+            "scripts": variant_scripts,
+        }
+        if video_count > 1
+        else video_terms,
         params,
-        downloaded_videos,
-        audio_file,
-        subtitle_path,
-        audio_duration,
     )
 
     if not final_video_paths:
