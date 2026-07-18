@@ -230,14 +230,27 @@ def _initialize_session_state():
     )
 
     defaults = {
-        "video_subject": "",
+        "video_subject": (
+            "App outfit AI: inserisci i tuoi capi nell'armadio digitale "
+            "e genera outfit completi in pochi secondi"
+        ),
         "video_script": "",
-        "video_terms": "",
-        "video_script_prompt": "",
+        "video_terms": (
+            "fashion outfit, wardrobe styling,clothing try on,"
+            "style app,street fashion,clothes hanging"
+        ),
+        "video_script_prompt": (
+            "Scrivi uno spot TikTok/Reels di 15-25 secondi. "
+            "Hook sul problema 'non so cosa mettermi', mostra inserimento "
+            "dei capi nell'app, poi outfit generati automaticamente, "
+            "chiudi con CTA per scaricare l'app. Tono Gen-Z, energico, "
+            "senza markdown né elenchi puntati."
+        ),
         "custom_system_prompt": llm.DEFAULT_SCRIPT_SYSTEM_PROMPT,
         "match_materials_to_script": bool(
             config.app.get("match_materials_to_script", False)
         ),
+        "paragraph_number_input": 2,
         "ui_language": initial_ui_language,
         # 已落盘的本地素材允许用户只修改文案后继续复用。
         "local_video_materials": [],
@@ -2084,7 +2097,7 @@ def _render_script_settings(panel, params):
             # 同时避免样式误伤页面顶部的“基础设置”等其他折叠区域。
             with st.container(key="advanced_settings_script"):
                 with st.expander(tr("Advanced Script Settings"), expanded=False):
-                    st.session_state.setdefault("paragraph_number_input", 1)
+                    st.session_state.setdefault("paragraph_number_input", 2)
                     params.paragraph_number = st.slider(
                         tr("Script Paragraph Number"),
                         min_value=llm.MIN_SCRIPT_PARAGRAPH_NUMBER,
