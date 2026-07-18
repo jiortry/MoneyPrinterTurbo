@@ -1364,18 +1364,17 @@ def _run_pipeline(
     audio_duration = last_audio_duration
     subtitle_path = last_subtitle_path
     downloaded_videos = last_materials
-    save_script_data(
-        task_id,
-        video_script,
-        {
-            "primary": video_terms,
-            "variants": variant_terms,
-            "scripts": variant_scripts,
-        }
-        if video_count > 1
-        else video_terms,
-        params,
-    )
+    save_script_data(task_id, video_script, video_terms, params)
+    if video_count > 1:
+        # Extra metadata for debugging multi-variant runs; primary search_terms
+        # stay a plain list so task restore keeps working.
+        meta_file = path.join(utils.task_dir(task_id), "variants.json")
+        with open(meta_file, "w", encoding="utf-8") as handle:
+            handle.write(
+                utils.to_json(
+                    {"scripts": variant_scripts, "terms": variant_terms}
+                )
+            )
 
     if not final_video_paths:
         return _mark_task_failed(
