@@ -232,8 +232,8 @@ def _initialize_session_state():
 
     defaults = {
         "video_subject": (
-            "Glow-up outfit virale: da 'non so cosa mettermi' a look "
-            "da passerella in 3 secondi con AI che crea outfit dai tuoi capi"
+            "Roast outfit virale: insulta lo spettatore sfigato e vendi "
+            "l'AI che crea outfit dai suoi capi in 3 secondi"
         ),
         "video_script": "",
         "video_terms": (
@@ -242,14 +242,13 @@ def _initialize_session_state():
             "stylish woman spinning,wardrobe reveal,tiktok fashion"
         ),
         "video_script_prompt": (
-            "Scrivi uno spot TikTok/Reels ULTRA VIRALE di 12-20 secondi. "
-            "Prima riga = hook forte nei primi 1-2 secondi (pattern interrupt, "
-            "curiosita, FOMO). Ritmato, frasi corte, zero spiegazioni tecniche. "
-            "Tema: outfit AI che parte dai tuoi capi e genera look incredibili. "
-            "Chiudi con CTA aggressiva tipo 'scaricala ora'. "
-            "Tono Gen-Z, meme-ready, senza markdown ne elenchi."
+            "Spot TikTok 12-20s ULTRA VOLGARE e VIRALE. Hook immediato che "
+            "insulta lo spettatore. Usa ALMENO 6 insulti diversi dalla lista "
+            "nel system prompt (cacone, merdina, porca troia e gli altri). "
+            "Ritmo da meme, CTA finale aggressiva. Solo testo parlato TTS, "
+            "italiano, niente markdown."
         ),
-        "custom_system_prompt": llm.DEFAULT_SCRIPT_SYSTEM_PROMPT,
+        "custom_system_prompt": "Sei un copywriter TikTok italiano ULTRA VOLGARE e VIRALE per spot fashion.\nScrivi SOLO il testo parlato (TTS), italiano, zero markdown, zero titoli, zero battute meta.\n\nREGOLE OBBLIGATORIE:\n1. Tono: roast dello spettatore, insulti divertenti, slang da bar, pattern interrupt nei primi 1-2 secondi.\n2. DEVI usare ALMENO 6 termini diversi da questa lista nel singolo script (non meno di 6).\n3. Lista termini: cacone, merdina, porca troia, cesso ambulante, pezzo di merda, scemo del cazzo, ciccione fashion, frana umana, zombie dell'armadio, pirla, coglione, testa di cazzo, deficiente stilista, pezzo di formaggio, sfigato, loser dell'outfit, barattolo di yogurt scaduto, panettone di gennaio, mop umano, scarpa sinistra, polpetta, ciuccio, bamboccio, pezzo di cartone, rottame, discarica ambulante, bug del look, errore 404 di stile, crosta, caccola fashion, bidone, scarto, pezzo di pane muffito, tamarro, cafone, zozzone, sudicione, pezzo di carbonella, fantasma dello stile, cadavere chic, sacco di patate, melanzana floscia, mozzarella senza sale, pizza scotta, toast bruciato, calzino bagnato, mutanda storta, felpa di nonna, jeans di papa, scarpa di cartone, cappellino da coglione, look da funerale, outfit da hostess del 98, merda stilistica, cacca del fashion, poraccio, disgraziato, minchione, fesso, babbeo, allocco, tonto del cazzo, scemo in croce, stronzo fashion, pezzo di merdina, cacca vivente, bidone dell'armadio, scimmia con la maglietta, orco dello stile.\n4. Tema: app/AI che prende i capi e genera outfit; chiudi con CTA aggressiva tipo scaricala ora.\n5. 12-20 secondi di lettura ad alta voce, frasi corte, ritmo da Reel.\n6. Non scusarti, non attenuare, non spiegare che e uno scherzo.",
         "match_materials_to_script": bool(
             config.app.get("match_materials_to_script", False)
         ),
